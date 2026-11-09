@@ -11,6 +11,7 @@ import { Banners, EmptyState, ErrorState, Skeleton } from "@/components/ui/State
 import { ProvenanceLegend } from "@/components/ui/ProvenanceLegend";
 import { AqiHero } from "./AqiHero";
 import { CrossCheckCard } from "./CrossCheckCard";
+import { InsightCard } from "./InsightCard";
 import { LocationBar } from "./LocationBar";
 import { PollutantCard } from "./PollutantCard";
 import { SourcesPanel } from "./SourcesPanel";
@@ -68,6 +69,7 @@ export function Dashboard({ initial }: { initial?: Place | null }) {
           {primary ? (
             <>
               <AqiHero primary={primary} standard={standard} onStandard={store.setStandard} />
+              <InsightCard lat={current.lat} lon={current.lon} name={current.name} />
               <section aria-labelledby="pol-h">
                 <h2 id="pol-h" className="mb-3 font-display text-2xl">Pollutants</h2>
                 <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3">
