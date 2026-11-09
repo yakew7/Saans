@@ -30,3 +30,18 @@ export function fromError<T = never>(source: string, kind: BadgeKind, err: unkno
 }
 
 export const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+/** Collects cache/freshness facts across the upstream calls behind one adapter result. */
+export class Tracker {
+  storedAt = Date.now();
+  cached = false;
+  servedStale = false;
+  add(c: { storedAt: number; fromCache: boolean; stale: boolean }) {
+    this.storedAt = Math.min(this.storedAt, c.storedAt);
+    this.cached ||= c.fromCache;
+    this.servedStale ||= c.stale;
+  }
+  meta(): Partial<Meta> {
+    return { fetchedAt: new Date(this.storedAt).toISOString(), cached: this.cached, servedStale: this.servedStale };
+  }
+}

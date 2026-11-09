@@ -3,7 +3,7 @@ import type { AdapterResult, PollutantId } from "../types";
 import { cached, TTL } from "../net/cache";
 import { fetchJson } from "../net/http";
 import { haversineKm } from "../aqi/stats";
-import { baseMeta, failResult, fromError, okResult } from "./util";
+import { baseMeta, failResult, fromError, okResult, Tracker } from "./util";
 
 /**
  * OpenAQ v3 adapter. Header X-API-Key (server only). Rate limit 60 req/min (see x-ratelimit-* headers).
@@ -40,9 +40,37 @@ const DaysResponse = z.object({
   ),
 });
 
+const HoursResponse = z.object({
+  results: z.array(z.object({ value: z.number().nullable(), period: z.object({ datetimeFrom: z.object({ utc: z.string() }) }) })),
+});
+
 type OaqLocation = z.infer<typeof Location>;
 
 const PARAM_MAP: Record<string, PollutantId> = { pm25: "pm25", pm10: "pm10", no2: "no2", so2: "so2", co: "co", o3: "o3" };
+
+/** Hourly means for the last 24 h of the freshest PM2.5 / PM10 sensors. Failures degrade to "no hourly data", never throw. */
+async function recentHours(l: OaqLocation, latest: z.infer<typeof LatestResponse>["results"], key: string, trk: Tracker): Promise<StationReading["recent"]> {
+  const out: StationReading["recent"] = {};
+  const fresh = new Map(latest.map((r) => [r.sensorsId, Date.parse(r.datetime.utc)]));
+  // floor to the hour so concurrent/nearby requests share one cache key
+  const to = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 + 3_600_000);
+  const from = new Date(to.getTime() - 27 * 3_600_000);
+  const iso = (d: Date) => d.toISOString().slice(0, 19) + "Z";
+  for (const name of ["pm25", "pm10"] as const) {
+    const sensor = l.sensors.filter((s) => s.parameter.name === name).sort((a, b) => (fresh.get(b.id) ?? 0) - (fresh.get(a.id) ?? 0))[0];
+    if (!sensor || !fresh.get(sensor.id)) continue;
+    try {
+      const path = `/sensors/${sensor.id}/hours?datetime_from=${iso(from)}&datetime_to=${iso(to)}&limit=100`;
+      const res = HoursResponse.parse(await oaq(path, TTL.live, key, trk));
+      out[name] = res.results
+        .map((r) => ({ t: r.period.datetimeFrom.utc, v: r.value != null && r.value >= 0 ? r.value : null }))
+        .sort((a, b) => a.t.localeCompare(b.t));
+    } catch {
+      /* optional enrichment: ignore */
+    }
+  }
+  return out;
+}
 
 export interface StationReading {
   stationId: number;
@@ -52,7 +80,15 @@ export interface StationReading {
   distanceKm: number;
   provider: string | null;
   pollutants: Partial<Record<PollutantId, { value: number; unit: string; observedAt: string }>>;
+  /** last ~24 hourly means (oldest first) for PM2.5 / PM10, used for NowCast and 24 h averages */
+  recent: Partial<Record<"pm25" | "pm10", HourPoint[]>>;
   observedAt: string;
+}
+
+export interface HourPoint {
+  /** ISO UTC start of the hour */
+  t: string;
+  v: number | null;
 }
 
 function apiKey(): string | null {
@@ -60,23 +96,24 @@ function apiKey(): string | null {
   return k && k.trim() ? k.trim() : null;
 }
 
-async function oaq(path: string, ttlMs: number, key: string): Promise<unknown> {
+async function oaq(path: string, ttlMs: number, key: string, trk: Tracker): Promise<unknown> {
   const c = await cached(`oaq:${path}`, { ttlMs, maxStaleMs: TTL.staleFallback }, async () => {
     const { json } = await fetchJson(`${BASE}${path}`, { source: SOURCE, headers: { "X-API-Key": key } });
     return json;
   });
+  trk.add(c);
   return c.value;
 }
 
 const r2 = (n: number) => n.toFixed(2);
 
-async function nearbyLocations(lat: number, lon: number, key: string): Promise<OaqLocation[]> {
+async function nearbyLocations(lat: number, lon: number, key: string, trk: Tracker): Promise<OaqLocation[]> {
   const path = `/locations?coordinates=${r2(lat)},${r2(lon)}&radius=${OPENAQ_RADIUS_M}&limit=100`;
-  return LocationsResponse.parse(await oaq(path, TTL.live, key)).results;
+  return LocationsResponse.parse(await oaq(path, TTL.live, key, trk)).results;
 }
 
-async function latestFor(locationId: number, key: string) {
-  return LatestResponse.parse(await oaq(`/locations/${locationId}/latest`, TTL.live, key)).results;
+async function latestFor(locationId: number, key: string, trk: Tracker) {
+  return LatestResponse.parse(await oaq(`/locations/${locationId}/latest`, TTL.live, key, trk)).results;
 }
 
 const hasPm = (l: OaqLocation) => l.sensors.some((s) => s.parameter.name === "pm25" || s.parameter.name === "pm10");
@@ -85,8 +122,9 @@ const hasPm = (l: OaqLocation) => l.sensors.some((s) => s.parameter.name === "pm
 export async function getOpenAqLatest(lat: number, lon: number): Promise<AdapterResult<StationReading>> {
   const key = apiKey();
   if (!key) return failResult(SOURCE, "MEASURED", "OPENAQ_API_KEY is not configured", "no_key");
+  const trk = new Tracker();
   try {
-    const locs = await nearbyLocations(lat, lon, key);
+    const locs = await nearbyLocations(lat, lon, key, trk);
     const dayAgo = Date.now() - 24 * 3_600_000;
     const candidates = locs
       .filter((l) => hasPm(l) && l.datetimeLast && Date.parse(l.datetimeLast.utc) > dayAgo)
@@ -96,7 +134,7 @@ export async function getOpenAqLatest(lat: number, lon: number): Promise<Adapter
     if (!candidates.length) return failResult(SOURCE, "MEASURED", "No active OpenAQ station with particulate data within 25 km", "empty");
 
     for (const { l, d } of candidates) {
-      const latest = await latestFor(l.id, key);
+      const latest = await latestFor(l.id, key, trk);
       const sensorParam = new Map(l.sensors.map((s) => [s.id, s.parameter]));
       const pollutants: StationReading["pollutants"] = {};
       for (const rec of latest) {
@@ -114,6 +152,7 @@ export async function getOpenAqLatest(lat: number, lon: number): Promise<Adapter
       for (const [k, v] of Object.entries(pollutants) as [PollutantId, { observedAt: string }][]) {
         if (Date.parse(v.observedAt) < dayAgo) delete pollutants[k];
       }
+      const recent = await recentHours(l, latest, key, trk);
       const data: StationReading = {
         stationId: l.id,
         stationName: l.name ?? `Station ${l.id}`,
@@ -122,9 +161,10 @@ export async function getOpenAqLatest(lat: number, lon: number): Promise<Adapter
         distanceKm: Math.round(d * 10) / 10,
         provider: l.provider?.name ?? null,
         pollutants,
+        recent,
         observedAt: pm.observedAt,
       };
-      return okResult(data, baseMeta(SOURCE, "MEASURED", { observedAt: data.observedAt, stationName: data.stationName, stationDistanceKm: data.distanceKm }));
+      return okResult(data, baseMeta(SOURCE, "MEASURED", { ...trk.meta(), observedAt: data.observedAt, stationName: data.stationName, stationDistanceKm: data.distanceKm }));
     }
     return failResult(SOURCE, "MEASURED", "Nearby OpenAQ stations have no recent particulate readings", "empty");
   } catch (e) {
@@ -153,8 +193,9 @@ export interface OpenAqDaily {
 export async function getOpenAqDaily(lat: number, lon: number, from: string, to: string): Promise<AdapterResult<OpenAqDaily>> {
   const key = apiKey();
   if (!key) return failResult(SOURCE, "HISTORICAL-MEASURED", "OPENAQ_API_KEY is not configured", "no_key");
+  const trk = new Tracker();
   try {
-    const locs = await nearbyLocations(lat, lon, key);
+    const locs = await nearbyLocations(lat, lon, key, trk);
     const fromMs = Date.parse(from);
     const toMs = Date.parse(to);
     const candidates = locs
@@ -170,14 +211,14 @@ export async function getOpenAqDaily(lat: number, lon: number, from: string, to:
 
     for (const { l, d } of candidates) {
       const out: OpenAqDaily = { stationId: l.id, stationName: l.name ?? `Station ${l.id}`, distanceKm: Math.round(d * 10) / 10, provider: l.provider?.name ?? null, pm25: [], pm10: [] };
-      const latest = await latestFor(l.id, key).catch(() => []);
+      const latest = await latestFor(l.id, key, trk).catch(() => []);
       const freshness = new Map(latest.map((r) => [r.sensorsId, Date.parse(r.datetime.utc)]));
       for (const name of ["pm25", "pm10"] as const) {
         const sensors = l.sensors.filter((s) => s.parameter.name === name).sort((a, b) => (freshness.get(b.id) ?? 0) - (freshness.get(a.id) ?? 0));
         for (const s of sensors.slice(0, 2)) {
           // NB: /days filters with date_from/date_to (datetime_* is silently ignored; only /hours uses datetime_*)
           const path = `/sensors/${s.id}/days?date_from=${from}&date_to=${to}&limit=1000`;
-          const res = DaysResponse.parse(await oaq(path, TTL.history, key));
+          const res = DaysResponse.parse(await oaq(path, TTL.history, key, trk));
           const pts = res.results
             .filter((r) => r.value != null && r.value >= 0 && (r.coverage?.percentComplete ?? 100) >= 50)
             .map((r) => ({ date: r.period.datetimeFrom.local.slice(0, 10), value: r.value as number, coveragePct: r.coverage?.percentComplete ?? null }));
@@ -189,7 +230,7 @@ export async function getOpenAqDaily(lat: number, lon: number, from: string, to:
       }
       if (out.pm25.length || out.pm10.length) {
         const observedAt = [...out.pm25, ...out.pm10].map((p) => p.date).sort().at(-1) ?? null;
-        return okResult(out, baseMeta(SOURCE, "HISTORICAL-MEASURED", { observedAt: observedAt ? `${observedAt}T00:00:00Z` : null, stationName: out.stationName, stationDistanceKm: out.distanceKm }));
+        return okResult(out, baseMeta(SOURCE, "HISTORICAL-MEASURED", { ...trk.meta(), observedAt: observedAt ? `${observedAt}T00:00:00Z` : null, stationName: out.stationName, stationDistanceKm: out.distanceKm }));
       }
     }
     return failResult(SOURCE, "HISTORICAL-MEASURED", "No daily particulate data from nearby OpenAQ stations for this period", "empty");

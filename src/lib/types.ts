@@ -24,6 +24,8 @@ export interface Meta {
   stale: boolean;
   /** true when served from our server cache */
   cached?: boolean;
+  /** true when the upstream failed and we are showing the last good (expired) cached copy */
+  servedStale?: boolean;
 }
 
 export type ErrorCode = "no_key" | "empty" | "upstream" | "invalid";

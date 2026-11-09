@@ -3,7 +3,7 @@ import type { AdapterResult } from "../types";
 import { cached, TTL } from "../net/cache";
 import { fetchJson } from "../net/http";
 import { haversineKm } from "../aqi/stats";
-import { baseMeta, failResult, fromError, okResult } from "./util";
+import { baseMeta, failResult, fromError, okResult, Tracker } from "./util";
 
 /**
  * Open-Meteo Air Quality (CAMS) + Geocoding. No key. Free for non-commercial use.
@@ -82,11 +82,12 @@ export interface HourlyAir {
   utcOffsetSeconds: number;
 }
 
-async function om(url: string, ttlMs: number) {
+async function om(url: string, ttlMs: number, trk: Tracker) {
   const c = await cached(`om:${url}`, { ttlMs, maxStaleMs: TTL.staleFallback }, async () => {
     const { json } = await fetchJson(url, { source: SOURCE });
     return AirResponse.parse(json);
   });
+  trk.add(c);
   return c;
 }
 
@@ -95,7 +96,8 @@ const coord = (n: number) => n.toFixed(2);
 export async function getOpenMeteoCurrent(lat: number, lon: number): Promise<AdapterResult<ModelledCurrent>> {
   try {
     const url = `${AQ}?latitude=${coord(lat)}&longitude=${coord(lon)}&current=us_aqi,european_aqi,pm2_5,pm10,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,ozone&timezone=auto`;
-    const { value: r } = await om(url, TTL.live);
+    const trk = new Tracker();
+    const { value: r } = await om(url, TTL.live, trk);
     if (!r.current) return failResult(SOURCE, "MODELLED", "Open-Meteo returned no current block", "empty");
     const c = r.current;
     const observedAt = localToIso(c.time, r.utc_offset_seconds);
@@ -108,7 +110,7 @@ export async function getOpenMeteoCurrent(lat: number, lon: number): Promise<Ada
       observedAt,
       gridDistanceKm: Math.round(haversineKm(lat, lon, r.latitude, r.longitude) * 10) / 10,
     };
-    return okResult(data, baseMeta(SOURCE, "MODELLED", { observedAt, stationName: "CAMS model grid cell", stationDistanceKm: data.gridDistanceKm }));
+    return okResult(data, baseMeta(SOURCE, "MODELLED", { ...trk.meta(), observedAt, stationName: "CAMS model grid cell", stationDistanceKm: data.gridDistanceKm }));
   } catch (e) {
     return fromError(SOURCE, "MODELLED", e);
   }
@@ -143,11 +145,12 @@ export async function getOpenMeteoHourly(lat: number, lon: number, pastDays: num
   const kind = forecastDays > 0 ? "FORECAST" : "MODELLED";
   try {
     const url = `${AQ}?latitude=${coord(lat)}&longitude=${coord(lon)}&hourly=${HOURLY_VARS}&past_days=${Math.min(92, pastDays)}&forecast_days=${Math.min(7, Math.max(1, forecastDays))}&timezone=auto`;
-    const c = await om(url, forecastDays > 0 ? TTL.forecast : TTL.history);
+    const trk = new Tracker();
+    const c = await om(url, forecastDays > 0 ? TTL.forecast : TTL.history, trk);
     const data = toHourly(c.value);
     if (!data || !data.times.length) return failResult(SOURCE, kind, "Open-Meteo returned no hourly data", "empty");
     const issued = new Date(c.storedAt).toISOString();
-    return okResult(data, baseMeta(SOURCE, kind, { observedAt: issued, stationName: "CAMS model grid cell", stationDistanceKm: Math.round(haversineKm(lat, lon, data.lat, data.lon) * 10) / 10 }));
+    return okResult(data, baseMeta(SOURCE, kind, { ...trk.meta(), observedAt: issued, stationName: "CAMS model grid cell", stationDistanceKm: Math.round(haversineKm(lat, lon, data.lat, data.lon) * 10) / 10 }));
   } catch (e) {
     return fromError(SOURCE, kind, e);
   }
@@ -157,10 +160,11 @@ export async function getOpenMeteoHourly(lat: number, lon: number, pastDays: num
 export async function getOpenMeteoRange(lat: number, lon: number, start: string, end: string): Promise<AdapterResult<HourlyAir>> {
   try {
     const url = `${AQ}?latitude=${coord(lat)}&longitude=${coord(lon)}&hourly=${HOURLY_VARS}&start_date=${start}&end_date=${end}&timezone=auto`;
-    const c = await om(url, TTL.history);
+    const trk = new Tracker();
+    const c = await om(url, TTL.history, trk);
     const data = toHourly(c.value);
     if (!data || !data.times.length) return failResult(SOURCE, "MODELLED", "Open-Meteo returned no data for this range", "empty");
-    return okResult(data, baseMeta(SOURCE, "MODELLED", { observedAt: data.times.at(-1) ?? null, stationName: "CAMS model grid cell", stationDistanceKm: Math.round(haversineKm(lat, lon, data.lat, data.lon) * 10) / 10 }));
+    return okResult(data, baseMeta(SOURCE, "MODELLED", { ...trk.meta(), observedAt: data.times.at(-1) ?? null, stationName: "CAMS model grid cell", stationDistanceKm: Math.round(haversineKm(lat, lon, data.lat, data.lon) * 10) / 10 }));
   } catch (e) {
     return fromError(SOURCE, "MODELLED", e);
   }

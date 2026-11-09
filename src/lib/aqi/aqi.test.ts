@@ -164,3 +164,35 @@ describe("stats", () => {
     expect(bearingLabel(0, 0, 0, 1)).toBe("E");
   });
 });
+
+import { avg24h, nowcast } from "./nowcast";
+
+describe("NowCast", () => {
+  it("equals the value for a constant series", () => {
+    expect(nowcast(new Array(12).fill(40))).toBeCloseTo(40, 9);
+  });
+  it("weights the newest hours more when concentrations are changing quickly", () => {
+    // newest = 100, previous 11 hours = 10 -> w floored to 0.5, newest dominates
+    const series = [...new Array(11).fill(10), 100];
+    const nc = nowcast(series)!;
+    expect(nc).toBeGreaterThan(50);
+    expect(nc).toBeLessThan(100);
+  });
+  it("is null when fewer than 2 of the last 3 hours are valid", () => {
+    expect(nowcast([20, 20, 20, 20, 20, 20, 20, 20, 20, null, null, 20])).toBeNull();
+    expect(nowcast([20, 20, 20, 20, 20, 20, 20, 20, 20, 20, null, 20])).not.toBeNull();
+  });
+  it("handles all-zero and empty input", () => {
+    expect(nowcast(new Array(12).fill(0))).toBe(0);
+    expect(nowcast([])).toBeNull();
+  });
+});
+
+describe("avg24h", () => {
+  it("averages when coverage is sufficient", () => {
+    expect(avg24h(new Array(24).fill(10))).toBe(10);
+  });
+  it("returns null when coverage is below 16 hours (no zero-filling)", () => {
+    expect(avg24h([...new Array(10).fill(10), ...new Array(14).fill(null)])).toBeNull();
+  });
+});

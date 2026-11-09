@@ -3,7 +3,7 @@ import type { AdapterResult, PollutantId } from "../types";
 import { cached, TTL } from "../net/cache";
 import { fetchJson } from "../net/http";
 import { haversineKm } from "../aqi/stats";
-import { baseMeta, failResult, fromError, okResult } from "./util";
+import { baseMeta, failResult, fromError, okResult, Tracker } from "./util";
 
 /**
  * WAQI adapter (token via ?token=, server only).
@@ -60,7 +60,7 @@ function token(): string | null {
   return t && t.trim() ? t.trim() : null;
 }
 
-async function waqi(path: string, tok: string): Promise<unknown> {
+async function waqi(path: string, tok: string, trk: Tracker): Promise<unknown> {
   const sep = path.includes("?") ? "&" : "?";
   const c = await cached(`waqi:${path}`, { ttlMs: TTL.waqi, maxStaleMs: TTL.waqiMaxStale }, async () => {
     const { json } = await fetchJson(`${BASE}${path}${sep}token=${encodeURIComponent(tok)}`, { source: SOURCE });
@@ -68,6 +68,7 @@ async function waqi(path: string, tok: string): Promise<unknown> {
     if (env.status !== "ok") throw Object.assign(new Error(typeof env.data === "string" ? env.data : "WAQI error"), { name: "WaqiError" });
     return env.data;
   });
+  trk.add(c);
   return c.value;
 }
 
@@ -119,8 +120,8 @@ function parseFeed(raw: unknown, from?: { lat: number; lon: number }): WaqiFeed 
   };
 }
 
-function feedResult(data: WaqiFeed): AdapterResult<WaqiFeed> {
-  return okResult(data, baseMeta(SOURCE, "MEASURED", { observedAt: data.observedAt, stationName: data.stationName, stationDistanceKm: data.distanceKm }));
+function feedResult(data: WaqiFeed, trk: Tracker): AdapterResult<WaqiFeed> {
+  return okResult(data, baseMeta(SOURCE, "MEASURED", { ...trk.meta(), observedAt: data.observedAt, stationName: data.stationName, stationDistanceKm: data.distanceKm }));
 }
 
 export const WAQI_MAX_DISTANCE_KM = 50;
@@ -133,11 +134,13 @@ export const WAQI_MAX_DISTANCE_KM = 50;
 export async function getWaqiFeedGeo(lat: number, lon: number): Promise<AdapterResult<WaqiFeed>> {
   const tok = token();
   if (!tok) return failResult(SOURCE, "MEASURED", "WAQI_API_TOKEN is not configured", "no_key");
+  const trk = new Tracker();
   try {
     let best: { p: WaqiStationPoint; d: number } | null = null;
     for (const half of [0.25, 0.6]) {
       const b = await getWaqiBounds(lat - half, lon - half, lat + half, lon + half);
       if (!b.ok) return failResult(SOURCE, "MEASURED", b.error ?? "WAQI bounds lookup failed", b.code ?? "upstream", b.status);
+      trk.add({ storedAt: Date.parse(b.meta.fetchedAt), fromCache: !!b.meta.cached, stale: !!b.meta.servedStale });
       const fresh = (b.data ?? []).filter((p) => !p.observedAt || Date.now() - Date.parse(p.observedAt) < 24 * 3_600_000);
       const scored = fresh.map((p) => ({ p, d: haversineKm(lat, lon, p.lat, p.lon) })).sort((x, y) => x.d - y.d);
       if (scored.length && scored[0].d <= WAQI_MAX_DISTANCE_KM) {
@@ -146,10 +149,10 @@ export async function getWaqiFeedGeo(lat: number, lon: number): Promise<AdapterR
       }
     }
     if (!best) return failResult(SOURCE, "MEASURED", `No WAQI station with current data within ${WAQI_MAX_DISTANCE_KM} km`, "empty");
-    const raw = await waqi(`/feed/@${best.p.uid}/`, tok);
+    const raw = await waqi(`/feed/@${best.p.uid}/`, tok, trk);
     const data = parseFeed(raw, { lat, lon });
     if (data.aqi == null && !Object.keys(data.subIndices).length) return failResult(SOURCE, "MEASURED", "Nearest WAQI station reports no current values", "empty");
-    return feedResult(data);
+    return feedResult(data, trk);
   } catch (e) {
     if (e instanceof Error && e.name === "WaqiError") return failResult(SOURCE, "MEASURED", e.message, "empty");
     return fromError(SOURCE, "MEASURED", e);
@@ -160,8 +163,9 @@ export async function getWaqiFeedGeo(lat: number, lon: number): Promise<AdapterR
 export async function getWaqiFeedByUid(uid: number): Promise<AdapterResult<WaqiFeed>> {
   const tok = token();
   if (!tok) return failResult(SOURCE, "MEASURED", "WAQI_API_TOKEN is not configured", "no_key");
+  const trk = new Tracker();
   try {
-    return feedResult(parseFeed(await waqi(`/feed/@${uid}/`, tok)));
+    return feedResult(parseFeed(await waqi(`/feed/@${uid}/`, tok, trk)), trk);
   } catch (e) {
     if (e instanceof Error && e.name === "WaqiError") return failResult(SOURCE, "MEASURED", e.message, "empty");
     return fromError(SOURCE, "MEASURED", e);
@@ -181,9 +185,10 @@ export interface WaqiStationPoint {
 export async function getWaqiBounds(south: number, west: number, north: number, east: number): Promise<AdapterResult<WaqiStationPoint[]>> {
   const tok = token();
   if (!tok) return failResult(SOURCE, "MEASURED", "WAQI_API_TOKEN is not configured", "no_key");
+  const trk = new Tracker();
   try {
     const q = [south, west, north, east].map((n) => n.toFixed(3)).join(",");
-    const rows = MapBounds.parse(await waqi(`/v2/map/bounds?latlng=${q}&networks=all`, tok));
+    const rows = MapBounds.parse(await waqi(`/v2/map/bounds?latlng=${q}&networks=all`, tok, trk));
     const pts: WaqiStationPoint[] = [];
     for (const r of rows) {
       if (r.aqi == null) continue;
@@ -191,7 +196,7 @@ export async function getWaqiBounds(south: number, west: number, north: number, 
       pts.push({ uid: r.uid, lat: r.lat, lon: r.lon, aqi: r.aqi, name: r.station.name, observedAt: Number.isNaN(t) ? null : new Date(t).toISOString() });
     }
     const newest = pts.map((p) => p.observedAt).filter(Boolean).sort().at(-1) ?? null;
-    return okResult(pts, baseMeta(SOURCE, "MEASURED", { observedAt: newest }));
+    return okResult(pts, baseMeta(SOURCE, "MEASURED", { ...trk.meta(), observedAt: newest }));
   } catch (e) {
     return fromError(SOURCE, "MEASURED", e);
   }
@@ -200,10 +205,11 @@ export async function getWaqiBounds(south: number, west: number, north: number, 
 export async function searchWaqi(keyword: string): Promise<AdapterResult<{ uid: number; name: string; aqi: number | null; lat: number | null; lon: number | null }[]>> {
   const tok = token();
   if (!tok) return failResult(SOURCE, "MEASURED", "WAQI_API_TOKEN is not configured", "no_key");
+  const trk = new Tracker();
   try {
-    const rows = Search.parse(await waqi(`/v2/search/?keyword=${encodeURIComponent(keyword)}`, tok));
+    const rows = Search.parse(await waqi(`/v2/search/?keyword=${encodeURIComponent(keyword)}`, tok, trk));
     const data = rows.map((r) => ({ uid: r.uid, name: r.station.name, aqi: r.aqi, lat: r.station.geo?.[0] ?? null, lon: r.station.geo?.[1] ?? null }));
-    return okResult(data, baseMeta(SOURCE, "MEASURED"));
+    return okResult(data, baseMeta(SOURCE, "MEASURED", trk.meta()));
   } catch (e) {
     return fromError(SOURCE, "MEASURED", e);
   }
