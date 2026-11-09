@@ -44,6 +44,10 @@ export function AssistantPage() {
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const [speakFn, setSpeakFn] = useState<((t: string) => void) | null>(null);
+  const [voiceMsg, setVoiceMsg] = useState("");
+  const onSpeakReady = useCallback((fn: (t: string) => void) => setSpeakFn(() => fn), []);
+  const onVoiceText = useCallback((t: string) => void sendRef.current?.(t, true), []);
+  const sendRef = useRef<((t: string, v?: boolean) => Promise<void>) | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -98,6 +102,10 @@ export function AssistantPage() {
     },
     [busy, msgs, current, speakNext, speakFn],
   );
+
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-8">
@@ -166,7 +174,7 @@ export function AssistantPage() {
             />
             <p className="text-right text-[11px] text-[color:var(--muted)]">{input.length}/{MAX_LEN}</p>
           </div>
-          <VoiceControls disabled={busy} onTranscript={(t) => send(t, true)} onSpeakReady={(fn) => setSpeakFn(() => fn)} speakNext={speakNext} onSpeakNext={setSpeakNext} />
+          <VoiceControls disabled={busy} onTranscript={onVoiceText} onSpeakReady={onSpeakReady} speakNext={speakNext} onSpeakNext={setSpeakNext} onStatus={setVoiceMsg} />
           {busy ? (
             <button type="button" onClick={() => abortRef.current?.abort()} className="grid h-11 w-11 place-items-center rounded-full border border-[color:var(--border)]" aria-label="Stop generating">
               <Square size={16} aria-hidden />
@@ -177,8 +185,9 @@ export function AssistantPage() {
             </button>
           )}
         </form>
+        <p role="status" aria-live="polite" className="mt-2 min-h-5 text-xs text-[color:var(--muted)]">{voiceMsg}</p>
       </div>
-      <p className="text-xs text-[color:var(--muted)]">General information, not medical advice. Questions are sent to our server and an AI provider (Gemini or Groq) together with the live data for {current.name}; nothing is stored. Rate-limited to protect free quotas.</p>
+      <p className="text-xs text-[color:var(--muted)]">General information, not medical advice. Questions are sent to our server and an AI provider (Gemini or Groq) together with the live data for {current.name}; nothing is stored. Voice: hold the mic to speak (max 30 s); audio is transcribed by Groq Whisper and never stored. Rate-limited to protect free quotas.</p>
     </div>
   );
 }
