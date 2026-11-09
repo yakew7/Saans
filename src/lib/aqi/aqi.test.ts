@@ -3,7 +3,7 @@ import { aqiPm10, aqiPm25, computeEpaAqi } from "./epa";
 import { computePmNaqi, naqiPm10, naqiPm25 } from "./naqi";
 import { categoryFor, naqiCategoryFor } from "./categories";
 import { cigaretteEquivalent, whoRatio } from "./who";
-import { ppbToUgm3, ugm3ToPpb } from "./convert";
+import { ppbToUgm3, toUgm3, ugm3ToPpb } from "./convert";
 import { bearingLabel, dailyMeans, detectSpikes, haversineKm, mad, median, percentChange, trendOf } from "./stats";
 
 describe("EPA PM2.5 (2024 breakpoints)", () => {
@@ -194,5 +194,27 @@ describe("avg24h", () => {
   });
   it("returns null when coverage is below 16 hours (no zero-filling)", () => {
     expect(avg24h([...new Array(10).fill(10), ...new Array(14).fill(null)])).toBeNull();
+  });
+});
+
+describe("toUgm3", () => {
+  it("normalises units and refuses to guess", () => {
+    expect(toUgm3("pm25", 12, "µg/m³")).toBe(12);
+    expect(toUgm3("co", 4, "mg/m3")).toBe(4000);
+    expect(toUgm3("no2", 53.14, "ppb")!).toBeCloseTo(100, 0);
+    expect(toUgm3("co", 0.27, "ppb")).toBeNull();
+    expect(toUgm3("so2", 1, "furlongs")).toBeNull();
+    expect(toUgm3("o3", 1, null)).toBeNull();
+  });
+});
+
+import { isFlatlined } from "../sources/snapshot";
+describe("flatline detection", () => {
+  it("flags sensors stuck near zero but not clean-but-real readings", () => {
+    expect(isFlatlined(new Array(20).fill(0))).toBe(true);
+    expect(isFlatlined([...new Array(12).fill(0.2)])).toBe(true);
+    expect(isFlatlined(new Array(20).fill(3))).toBe(false);
+    expect(isFlatlined([0, 0, 0])).toBe(false); // too few points to judge
+    expect(isFlatlined(undefined)).toBe(false);
   });
 });

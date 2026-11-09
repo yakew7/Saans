@@ -37,6 +37,8 @@ export interface Primary {
   naqi: NaqiInfo | null;
   euAqi?: number | null;
   meta: Meta;
+  /** data-quality notes (e.g. a sensor excluded as faulty) */
+  notes?: string[];
 }
 
 export interface Banner {
@@ -95,8 +97,19 @@ export function buildOpenAqPrimary(r: AdapterResult<StationReading>): Primary | 
   }
   const nc: Partial<Record<PollutantId, number | null>> = {};
   const usedNowcast: string[] = [];
+  const notes: string[] = [];
   for (const id of ["pm25", "pm10"] as const) {
     const series = d.recent[id]?.map((h) => h.v);
+    if (isFlatlined(series)) {
+      // A particulate sensor stuck at ~0 for 12+ hours is a fault, not clean air: exclude (shown as "—", never 0).
+      const e = entries.find((x) => x.id === id)!;
+      e.value = null;
+      e.unit = null;
+      e.observedAt = null;
+      e.avg24 = null;
+      notes.push(`${id === "pm25" ? "PM2.5" : "PM10"} at ${d.stationName} has reported ~0 for 12+ hours, which looks like a faulty sensor. It was excluded.`);
+      continue;
+    }
     const n = series?.length ? nowcast(series) : null;
     if (n != null) {
       nc[id] = n;
@@ -119,7 +132,14 @@ export function buildOpenAqPrimary(r: AdapterResult<StationReading>): Primary | 
     pollutants: entries,
     naqi: naqi ? { aqi: naqi.aqi, dominant: naqi.dominant, basis: "24 h mean PM2.5 / PM10 (OpenAQ hourly)" } : null,
     meta: r.meta,
+    notes,
   };
+}
+
+/** >= 12 valid hourly values, all at or below 0.5 µg/m³: implausible for a working particulate sensor. */
+export function isFlatlined(series: (number | null)[] | undefined): boolean {
+  const v = (series ?? []).filter((x): x is number => x != null);
+  return v.length >= 12 && Math.max(...v) <= 0.5;
 }
 
 export function buildWaqiPrimary(r: AdapterResult<WaqiFeed>): Primary | null {
@@ -247,6 +267,9 @@ export async function getAirSnapshot(lat: number, lon: number): Promise<AirSnaps
       const mins = minutesAgo(p.meta.fetchedAt, Date.now());
       banners.push({ id: `${p.key}-cached`, severity: "warn", source: p.meta.source, message: `${p.meta.source} is unreachable. Showing its last cached data, fetched ${agoLabel(mins)}.` });
     }
+  }
+  for (const p of [oaq, waqi]) {
+    for (const [i, n] of (p?.notes ?? []).entries()) banners.push({ id: `${p!.key}-note-${i}`, severity: "info", source: p!.meta.source, message: n });
   }
   if (primary?.meta.stale) {
     const mins = minutesAgo(primary.meta.observedAt, Date.now());
