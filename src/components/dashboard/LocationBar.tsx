@@ -33,7 +33,7 @@ export function LocationBar({
           <h1 className="font-display text-3xl leading-tight sm:text-4xl">{place.name}</h1>
           {place.country && <p className="text-sm text-[color:var(--muted)]">{place.country}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => store.toggleFavourite(place)}

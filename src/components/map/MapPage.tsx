@@ -63,7 +63,7 @@ export function MapPage() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="relative min-w-0">
           {!mounted && <Skeleton className="h-[62vh] min-h-[360px] w-full lg:h-[calc(100dvh-14rem)]" />}
           {mounted && (
