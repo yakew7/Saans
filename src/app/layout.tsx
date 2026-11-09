@@ -7,6 +7,7 @@ import { BottomTabs } from "@/components/layout/BottomTabs";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { AlertsRunner } from "@/components/alerts/AlertsRunner";
 import { ToastHost } from "@/components/alerts/ToastHost";
+import { PwaRegister } from "@/components/layout/PwaRegister";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["opsz"] });
 const text = Figtree({ subsets: ["latin"], variable: "--font-text", display: "swap" });
@@ -19,6 +20,8 @@ export const metadata: Metadata = {
   title: { default: "Saans — real-time air quality you can act on", template: "%s · Saans" },
   description:
     "Know your air, decide your day. Live AQI from real stations, honest provenance on every number, forecasts, history and health guidance for any city.",
+  icons: { icon: [{ url: "/icons/192", sizes: "192x192", type: "image/png" }], apple: [{ url: "/icons/192" }] },
+  applicationName: "Saans",
   openGraph: { title: "Saans — breathe better", description: "Real-time air quality intelligence with honest data provenance.", type: "website" },
 };
 
@@ -44,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BottomTabs />
           <AlertsRunner />
           <ToastHost />
+          <PwaRegister />
         </Providers>
       </body>
     </html>
