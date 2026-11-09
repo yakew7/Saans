@@ -71,6 +71,8 @@ export interface HourlyAir {
   lon: number;
   /** ISO UTC instants */
   times: string[];
+  /** the same instants as local wall-clock strings (YYYY-MM-DDTHH:MM) in the location's timezone */
+  localTimes: string[];
   pm25: (number | null)[];
   pm10: (number | null)[];
   no2: (number | null)[];
@@ -125,6 +127,7 @@ function toHourly(r: z.infer<typeof AirResponse>): HourlyAir | null {
     lat: r.latitude,
     lon: r.longitude,
     times: h.time.map((t) => localToIso(t, r.utc_offset_seconds)),
+    localTimes: h.time,
     pm25: pad(h.pm2_5),
     pm10: pad(h.pm10),
     no2: pad(h.nitrogen_dioxide),

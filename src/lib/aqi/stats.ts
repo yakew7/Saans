@@ -82,8 +82,9 @@ export function detectSpikes(
   return out;
 }
 
-export const SPIKE_FORMULA =
-  "robust z = 0.6745 × (x − rolling median of previous 24 h) ÷ max(MAD, 1); flagged when z ≥ 3.5";
+export const spikeFormula = (baseline: string, minScale = 1) =>
+  `robust z = 0.6745 × (x − rolling median of ${baseline}) ÷ max(MAD, ${minScale}); flagged when z ≥ 3.5`;
+export const SPIKE_FORMULA = spikeFormula("previous 24 h");
 
 export type Trend = "improving" | "worsening" | "steady";
 
@@ -118,4 +119,21 @@ export function bearingLabel(lat1: number, lon1: number, lat2: number, lon2: num
   const deg = (Math.atan2(y, x) * 180) / Math.PI;
   const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
   return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
+/** Least-squares line through (0..n-1, values). Returns slope per step and fitted values. */
+export function linearTrend(values: number[]): { slope: number; intercept: number; fitted: number[] } | null {
+  const n = values.length;
+  if (n < 3) return null;
+  const xm = (n - 1) / 2;
+  const ym = values.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  values.forEach((y, x) => {
+    num += (x - xm) * (y - ym);
+    den += (x - xm) ** 2;
+  });
+  const slope = den === 0 ? 0 : num / den;
+  const intercept = ym - slope * xm;
+  return { slope, intercept, fitted: values.map((_, x) => intercept + slope * x) };
 }

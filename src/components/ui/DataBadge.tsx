@@ -24,7 +24,8 @@ export interface DataBadgeProps {
 export function DataBadge({ kind, source, observedAt, fetchedAt, stale, cached, detail, compact, className = "" }: DataBadgeProps) {
   const info = BADGE_INFO[kind];
   const now = useNow();
-  const isStaleNow = stale ?? (now != null && isStale(observedAt, now));
+  // Only live measurements auto-flag as stale; other kinds (history, forecasts, models) must pass `stale` explicitly.
+  const isStaleNow = stale ?? (kind === "MEASURED" && now != null && isStale(observedAt, now));
   const fetchedMin = now != null ? minutesAgo(fetchedAt, now) : null;
   const observed = now != null ? formatObserved(observedAt) : "…";
 
