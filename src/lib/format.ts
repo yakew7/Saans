@@ -34,3 +34,14 @@ export function fmtNum(v: number | null | undefined, digits = 0): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
+
+/** Format a location-local wall-clock string (YYYY-MM-DDTHH:MM) without any timezone shifting. */
+export function fmtLocal(local: string | null | undefined, style: "day" | "time" | "full" = "full"): string {
+  if (!local) return "—";
+  const d = new Date(`${local.slice(0, 16)}:00Z`);
+  if (Number.isNaN(d.getTime())) return "—";
+  const o = { timeZone: "UTC" } as const;
+  const day = new Intl.DateTimeFormat("en-IN", { ...o, weekday: "short", day: "numeric", month: "short" }).format(d);
+  const time = new Intl.DateTimeFormat("en-IN", { ...o, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return style === "day" ? day : style === "time" ? time : `${day}, ${time}`;
+}
