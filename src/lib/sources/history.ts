@@ -40,39 +40,45 @@ function sufficient(days: DayValue[], r: HistoryRequest): { a: PeriodSummary; b:
   return { a, b, ok: a.validDays >= MIN_VALID_DAYS && b.validDays >= MIN_VALID_DAYS };
 }
 
-/**
- * Historical series for two periods from ONE source (never spliced).
- * auto: OpenAQ station history (HISTORICAL-MEASURED) when both periods have enough days, else Open-Meteo CAMS (MODELLED).
- */
-export async function getHistory(r: HistoryRequest): Promise<HistoryResponse> {
-  const from = addDays([r.aStart, r.bStart].sort()[0], -WARM_DAYS);
-  const to = [r.aEnd, r.bEnd].sort().at(-1)!;
-  const banners: Banner[] = [];
-  const empty: HistoryResponse = { source: null, badge: null, meta: null, periodA: null, periodB: null, comparison: null, banners };
+export interface DailySeries {
+  source: "openaq" | "open-meteo" | null;
+  badge: BadgeKind | null;
+  meta: Meta | null;
+  /** all days fetched, including warm-up days before the requested start */
+  days: DayValue[];
+  banners: Banner[];
+  /** why measured history was not used (empty when it was) */
+  measuredWhy: string;
+}
 
+/**
+ * One continuous daily series from ONE source for [from, to] (inclusive).
+ * mode auto: OpenAQ station history if it has at least `minDays` valid days within [checkFrom, to], else CAMS model.
+ */
+export async function getDailySeries(lat: number, lon: number, from: string, to: string, mode: HistoryMode, checkFrom: string = from, minDays: number = MIN_VALID_DAYS): Promise<DailySeries> {
+  const banners: Banner[] = [];
+  const empty: DailySeries = { source: null, badge: null, meta: null, days: [], banners, measuredWhy: "" };
   let measuredWhy = "";
-  if (r.mode !== "modelled") {
-    const o = await getOpenAqDaily(r.lat, r.lon, from, to);
+  if (mode !== "modelled") {
+    const o = await getOpenAqDaily(lat, lon, from, to);
     if (o.ok && o.data) {
       const days = toDayValues(new Map(o.data.pm25.map((p) => [p.date, p.value])), new Map(o.data.pm10.map((p) => [p.date, p.value])));
-      const s = sufficient(days, r);
-      if (s.ok) {
-        return { source: "openaq", badge: "HISTORICAL-MEASURED", meta: o.meta, periodA: s.a, periodB: s.b, comparison: comparePeriods(s.a, s.b), banners };
-      }
-      measuredWhy = `The nearest OpenAQ station (${o.data.stationName}) has fewer than ${MIN_VALID_DAYS} valid days in one of the periods.`;
+      const valid = days.filter((d) => d.date >= checkFrom && d.date <= to && d.aqi != null).length;
+      if (valid >= minDays) return { source: "openaq", badge: "HISTORICAL-MEASURED", meta: o.meta, days, banners, measuredWhy: "" };
+      measuredWhy = `The nearest OpenAQ station (${o.data.stationName}) has too few valid days in this range.`;
     } else {
       measuredWhy = o.code === "no_key" ? "OpenAQ is not configured on this server." : o.error ?? "OpenAQ history is unavailable.";
     }
-    if (r.mode === "measured") {
+    if (mode === "measured") {
       banners.push({ id: "no-measured", severity: "warn", source: "OpenAQ", message: `${measuredWhy} No measured history to show. Switch to “Modelled” to see CAMS model data.` });
-      return empty;
+      return { ...empty, measuredWhy };
     }
   }
 
-  const m = await getOpenMeteoRange(r.lat, r.lon, from, to);
+  const m = await getOpenMeteoRange(lat, lon, from, to);
   if (!m.ok || !m.data) {
     banners.push({ id: "om-fail", severity: "error", source: "Open-Meteo (CAMS)", message: `Modelled history is unavailable: ${m.error}` });
-    return empty;
+    return { ...empty, measuredWhy };
   }
   const now = Date.now();
   const pm25 = new Map<string, number[]>();
@@ -85,9 +91,7 @@ export async function getHistory(r: HistoryRequest): Promise<HistoryResponse> {
     if (a != null) (pm25.get(d) ?? pm25.set(d, []).get(d)!).push(a);
     if (b != null) (pm10.get(d) ?? pm10.set(d, []).get(d)!).push(b);
   });
-  const days = toDayValues(daily(pm25, 18), daily(pm10, 18));
-  const s = sufficient(days, r);
-  if (r.mode === "auto") {
+  if (mode === "auto") {
     banners.push({
       id: "modelled-history",
       severity: "info",
@@ -95,5 +99,22 @@ export async function getHistory(r: HistoryRequest): Promise<HistoryResponse> {
       message: `${measuredWhy} Showing MODELLED CAMS data instead. It is a model estimate, not station measurements.`.trim(),
     });
   }
-  return { source: "open-meteo", badge: "MODELLED", meta: m.meta, periodA: s.a, periodB: s.b, comparison: comparePeriods(s.a, s.b), banners };
+  return { source: "open-meteo", badge: "MODELLED", meta: m.meta, days: toDayValues(daily(pm25, 18), daily(pm10, 18)), banners, measuredWhy };
+}
+
+/** Historical series for two periods from ONE source (never spliced). */
+export async function getHistory(r: HistoryRequest): Promise<HistoryResponse> {
+  const from = addDays([r.aStart, r.bStart].sort()[0], -WARM_DAYS);
+  const to = [r.aEnd, r.bEnd].sort().at(-1)!;
+  const checkFrom = [r.aStart, r.bStart].sort()[0];
+  let series = await getDailySeries(r.lat, r.lon, from, to, r.mode, checkFrom, MIN_VALID_DAYS);
+  let s = series.days.length ? sufficient(series.days, r) : null;
+  // measured data existed overall but one period was too thin: fall back (auto) so both periods use the same source
+  if (r.mode === "auto" && series.source === "openaq" && s && !s.ok) {
+    const fb = await getDailySeries(r.lat, r.lon, from, to, "modelled");
+    series = { ...fb, banners: [{ id: "modelled-history", severity: "info", source: "Open-Meteo (CAMS)", message: "The nearest station has too few valid days in one period. Showing MODELLED CAMS data for both periods instead. It is a model estimate, not station measurements." }, ...fb.banners.filter((b) => b.id !== "modelled-history")] };
+    s = series.days.length ? sufficient(series.days, r) : null;
+  }
+  if (!series.source || !s) return { source: null, badge: null, meta: null, periodA: null, periodB: null, comparison: null, banners: series.banners };
+  return { source: series.source, badge: series.badge, meta: series.meta, periodA: s.a, periodB: s.b, comparison: comparePeriods(s.a, s.b), banners: series.banners };
 }

@@ -13,7 +13,18 @@ interface GeoPlace extends Place {
 }
 
 /** Global location search: accessible combobox with debounced autocomplete, recents and favourites. */
-export function LocationSearch({ className = "" }: { className?: string }) {
+export function LocationSearch({
+  className = "",
+  onSelect,
+  placeholder = "Search any city…",
+  label = "Search for a city or place",
+}: {
+  className?: string;
+  /** when provided the place is handed to the caller instead of becoming the global location */
+  onSelect?: (p: Place) => void;
+  placeholder?: string;
+  label?: string;
+}) {
   const id = useId();
   const router = useRouter();
   const path = usePathname();
@@ -62,9 +73,14 @@ export function LocationSearch({ className = "" }: { className?: string }) {
   const list = showResults ? results : shortcuts;
 
   function choose(p: GeoPlace) {
-    store.setCurrent({ name: p.name, lat: p.lat, lon: p.lon, country: p.country });
+    const place = { name: p.name, lat: p.lat, lon: p.lon, country: p.country };
     setQ("");
     setOpen(false);
+    if (onSelect) {
+      onSelect(place);
+      return;
+    }
+    store.setCurrent(place);
     // location-aware pages update in place; others go to the dashboard
     if (!STAY_ON.some((p) => path === p || path.startsWith(`${p}/`))) router.push("/");
   }
@@ -88,7 +104,7 @@ export function LocationSearch({ className = "" }: { className?: string }) {
   return (
     <div ref={box} className={`relative ${className}`}>
       <label htmlFor={`${id}-input`} className="sr-only">
-        Search for a city or place
+        {label}
       </label>
       <div className="flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 focus-within:ring-2 focus-within:ring-[color:var(--focus)]">
         <Search size={16} aria-hidden className="shrink-0 text-[color:var(--muted)]" />
@@ -106,7 +122,7 @@ export function LocationSearch({ className = "" }: { className?: string }) {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKey}
-          placeholder="Search any city…"
+          placeholder={placeholder}
           autoComplete="off"
           className="w-full bg-transparent text-sm outline-none placeholder:text-[color:var(--muted)]"
         />
