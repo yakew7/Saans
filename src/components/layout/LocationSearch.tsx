@@ -2,9 +2,11 @@
 
 import { MapPin, Search, Star } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { placeKey, type Place } from "@/lib/places";
 import { store, useAppState } from "@/lib/store";
+
+const STAY_ON = ["/", "/map", "/history", "/forecast", "/health", "/report", "/clean-air", "/diwali", "/assistant"];
 
 interface GeoPlace extends Place {
   label: string;
@@ -14,6 +16,7 @@ interface GeoPlace extends Place {
 export function LocationSearch({ className = "" }: { className?: string }) {
   const id = useId();
   const router = useRouter();
+  const path = usePathname();
   const { favourites, recents } = useAppState();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<GeoPlace[]>([]);
@@ -62,7 +65,8 @@ export function LocationSearch({ className = "" }: { className?: string }) {
     store.setCurrent({ name: p.name, lat: p.lat, lon: p.lon, country: p.country });
     setQ("");
     setOpen(false);
-    router.push("/");
+    // location-aware pages update in place; others go to the dashboard
+    if (!STAY_ON.some((p) => path === p || path.startsWith(`${p}/`))) router.push("/");
   }
 
   function onKey(e: React.KeyboardEvent) {

@@ -16,6 +16,7 @@ const vars = [
   ["GROQ_FALLBACK_MODEL", "optional", "Defaults to openai/gpt-oss-20b."],
   ["GROQ_WHISPER_MODEL", "optional", "Defaults to whisper-large-v3-turbo."],
   ["AI_DAILY_CAP", "optional", "Daily cap on AI + transcription requests (default 500)."],
+  ["NEXT_PUBLIC_CARTO_KEY", "optional", "CARTO basemap tiles (free key, public by design). Without it the map uses OpenStreetMap tiles."],
   ["NEXT_PUBLIC_SITE_URL", "optional", "Public URL for Open Graph / share cards (not a secret)."],
 ];
 

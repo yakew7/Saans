@@ -124,3 +124,23 @@ body {
   .no-print { display: none !important; }
   .card { border: 1px solid #bbb; backdrop-filter: none; break-inside: avoid; }
 }
+
+/* ---------- Map ---------- */
+.leaflet-container { font-family: var(--font-text), system-ui, sans-serif; background: var(--surface-2); border-radius: 18px; }
+.aqi-pin {
+  display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 5px;
+  border-radius: 999px; font-weight: 700; font-size: 12px; line-height: 1;
+  border: 2px solid rgba(255,255,255,0.95); box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  font-variant-numeric: tabular-nums;
+}
+.aqi-pin.is-selected { outline: 3px solid var(--ink); outline-offset: 2px; transform: scale(1.15); }
+.aqi-cluster {
+  display: grid; place-items: center; width: 42px; height: 42px; border-radius: 999px;
+  font-weight: 700; font-size: 13px; border: 3px solid rgba(255,255,255,0.95);
+  box-shadow: 0 1px 8px rgba(0,0,0,0.4); font-variant-numeric: tabular-nums;
+}
+.leaflet-marker-icon:focus-visible .aqi-pin, .leaflet-marker-icon:focus-visible .aqi-cluster { outline: 3px solid var(--focus); outline-offset: 3px; }
+.leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--muted); border-radius: 8px 0 0 0; }
+.leaflet-container .leaflet-control-attribution a { color: var(--accent); }
+.leaflet-container .leaflet-bar a { background: var(--surface); color: var(--ink); border-color: var(--border); }
+.tiles-dark-filter { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7); }
