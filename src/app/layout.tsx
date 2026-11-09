@@ -5,6 +5,8 @@ import { Providers } from "@/components/layout/Providers";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { BottomTabs } from "@/components/layout/BottomTabs";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { AlertsRunner } from "@/components/alerts/AlertsRunner";
+import { ToastHost } from "@/components/alerts/ToastHost";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap", axes: ["opsz"] });
 const text = Figtree({ subsets: ["latin"], variable: "--font-text", display: "swap" });
@@ -39,6 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
           <SiteFooter />
           <BottomTabs />
+          <AlertsRunner />
+          <ToastHost />
         </Providers>
       </body>
     </html>
