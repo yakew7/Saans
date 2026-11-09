@@ -6,6 +6,7 @@ import { agoLabel, formatObserved, minutesAgo } from "@/lib/format";
 import { useNow } from "@/lib/hooks/useNow";
 import { INDIA_METROS, placeKey, type Place } from "@/lib/places";
 import { store, useAppState } from "@/lib/store";
+import { ShareDialog } from "./ShareDialog";
 
 export function LocationBar({
   place,
@@ -42,6 +43,7 @@ export function LocationBar({
           >
             <Star size={18} aria-hidden className={fav ? "fill-current" : ""} />
           </button>
+          <ShareDialog place={place} />
           <button
             type="button"
             onClick={geo.locate}
