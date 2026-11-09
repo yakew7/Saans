@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wind } from "lucide-react";
-import { NAV } from "./nav";
+import { EXPLORE, NAV } from "./nav";
+
+const EXPLORE_PATHS = EXPLORE.filter((e) => e.href !== "/compare").map((e) => e.href);
 import { ThemeToggle } from "./ThemeToggle";
 import { LocationSearch } from "./LocationSearch";
 
@@ -23,7 +25,7 @@ export function SiteHeader() {
         </Link>
         <nav aria-label="Primary" className="ml-4 hidden flex-1 items-center gap-1 lg:flex">
           {NAV.map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? path === "/" : path.startsWith(href);
+            const active = href === "/" ? path === "/" : path.startsWith(href) || (href === "/explore" && EXPLORE_PATHS.some((p) => path.startsWith(p)));
             return (
               <Link
                 key={href}

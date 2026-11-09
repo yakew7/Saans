@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV } from "./nav";
+import { EXPLORE, MOBILE_NAV } from "./nav";
+
+const EXPLORE_PATHS = EXPLORE.map((e) => e.href);
 
 export function BottomTabs() {
   const path = usePathname();
@@ -13,8 +15,8 @@ export function BottomTabs() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="mx-auto grid max-w-xl grid-cols-6">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? path === "/" : path.startsWith(href);
+        {MOBILE_NAV.map(({ href, label, icon: Icon }) => {
+          const active = href === "/" ? path === "/" : path.startsWith(href) || (href === "/explore" && EXPLORE_PATHS.some((p) => path.startsWith(p)));
           return (
             <li key={href}>
               <Link
