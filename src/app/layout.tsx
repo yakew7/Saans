@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           <SiteHeader />
-          <main id="main" className="mx-auto max-w-7xl px-4 pt-6">
+          <main id="main" className="mx-auto min-h-[90dvh] max-w-7xl px-4 pt-6">
             {children}
           </main>
           <SiteFooter />

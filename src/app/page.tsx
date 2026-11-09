@@ -19,7 +19,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SP }): 
   const image = `/api/card?lat=${place.lat.toFixed(4)}&lon=${place.lon.toFixed(4)}&name=${encodeURIComponent(place.name)}`;
   const title = p ? `Air quality in ${p.name} right now` : "Saans: real-time air quality you can act on";
   return {
-    title: p ? { absolute: `${title} · Saans` } : undefined,
+    ...(p ? { title: { absolute: `${title} · Saans` } } : {}),
     openGraph: { title, description: "Live AQI with honest provenance: measured, modelled or forecast, always labelled.", images: [{ url: image, width: 1200, height: 630, alt: `Air quality card for ${place.name}` }] },
     twitter: { card: "summary_large_image", title, images: [image] },
   };

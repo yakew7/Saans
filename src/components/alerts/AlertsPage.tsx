@@ -12,6 +12,7 @@ import { pushToast } from "@/lib/toast";
 import type { Place } from "@/lib/places";
 import type { AirSnapshot } from "@/lib/sources/snapshot";
 import { LocationSearch } from "@/components/layout/LocationSearch";
+import { DataBadge } from "@/components/ui/DataBadge";
 
 const LEVELS = [
   { v: 51, label: "Moderate (51+)" },
@@ -35,7 +36,7 @@ function RuleRow({ rule }: { rule: AlertRule }) {
         <p className="font-medium">{rule.name}</p>
         <p className="text-sm text-[color:var(--muted)]">Alert when AQI reaches <strong className="text-[color:var(--ink)]">{rule.threshold}</strong> or more</p>
         <p className="mt-0.5 text-xs text-[color:var(--muted)]">
-          {p?.aqi != null ? <>Now: <strong style={{ color: "inherit" }}>{p.aqi}</strong> ({categoryFor(p.aqi).label}) · {p.meta.source}{above ? " · above your level" : ""}</> : q.isPending ? "Checking…" : "No current reading"}
+          {p?.aqi != null ? <>Now: <strong className="text-[color:var(--ink)]">{p.aqi}</strong> ({categoryFor(p.aqi).label}){above ? " · above your level" : ""}{" "}<DataBadge compact kind={p.aqiBadge} source={p.meta.source} observedAt={p.meta.observedAt} fetchedAt={p.meta.fetchedAt} stale={p.meta.stale} cached={p.meta.cached} detail={p.aqiDetail} /></> : q.isPending ? "Checking…" : "No current reading"}
         </p>
       </div>
       <label className="flex items-center gap-2 text-sm">

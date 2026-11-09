@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, Mic, Square, Volume2, VolumeX } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const MAX_SECONDS = 30;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -59,7 +59,12 @@ export function VoiceControls({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sr = useRef<SpeechRec | null>(null);
   const chunks = useRef<Blob[]>([]);
-  const [canSpeak] = useState(() => typeof window !== "undefined" && "speechSynthesis" in window);
+  // false on the server and during hydration, then the real capability (avoids a hydration mismatch)
+  const canSpeak = useSyncExternalStore(
+    () => () => {},
+    () => "speechSynthesis" in window,
+    () => false,
+  );
 
   useEffect(() => {
     if (!canSpeak) return;

@@ -10,7 +10,7 @@ import { useStations, type Bounds } from "@/lib/hooks/useStations";
 import { placeKey } from "@/lib/places";
 import { useAppState } from "@/lib/store";
 import { DataBadge } from "@/components/ui/DataBadge";
-import { Banners, EmptyState } from "@/components/ui/States";
+import { Banners, EmptyState, Skeleton } from "@/components/ui/States";
 import { MapClient } from "./MapClient";
 import { StationPanel } from "./StationPanel";
 import type { WaqiStationPoint } from "@/lib/sources/waqi";
@@ -65,6 +65,7 @@ export function MapPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div className="relative min-w-0">
+          {!mounted && <Skeleton className="h-[62vh] min-h-[360px] w-full lg:h-[calc(100dvh-14rem)]" />}
           {mounted && (
             <MapClient center={center} centerKey={center.key} stations={stations} selectedUid={selected} onSelect={onSelect} onBounds={setBounds} dark={resolvedTheme === "dark"} showMarkers={layerMode !== "heat"} showHeat={layerMode !== "markers"} />
           )}
@@ -77,7 +78,7 @@ export function MapPage() {
           </div>
         </div>
 
-        <aside className="space-y-4" aria-label="Station details and hotspots">
+        <aside className="space-y-4 lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto" aria-label="Station details and hotspots">
           {selected != null && <StationPanel uid={selected} onClose={() => setSelected(null)} />}
           <section aria-labelledby="hot-h" className="card p-4">
             <h2 id="hot-h" className="font-display text-xl">Hotspots in view</h2>

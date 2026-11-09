@@ -257,7 +257,13 @@ export async function getAirSnapshot(lat: number, lon: number): Promise<AirSnaps
     if (!r.ok && r.code === "no_key") {
       banners.push({ id: `${name}-nokey`, severity: "info", source: name, message: `${name} is not configured on this server, so its data is unavailable.` });
     } else if (!r.ok && r.code === "upstream") {
-      banners.push({ id: `${name}-down`, severity: "warn", source: name, message: `${name} is not responding${r.status ? ` (HTTP ${r.status})` : ""}: ${r.error}. ${primary ? `Showing ${primary.meta.source} instead.` : ""}` });
+      const rejected = r.status === 401 || r.status === 403;
+      banners.push({
+        id: `${name}-down`,
+        severity: "warn",
+        source: name,
+        message: `${rejected ? `${name} rejected this server's credentials (HTTP ${r.status}), so its data is unavailable.` : `${name} is not responding (${r.error}).`} ${primary ? `Showing ${primary.meta.source} instead.` : ""}`.trim(),
+      });
     } else if (!r.ok && r.code === "invalid") {
       banners.push({ id: `${name}-invalid`, severity: "warn", source: name, message: `${name} returned an unexpected response; its data is excluded.` });
     }
