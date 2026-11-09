@@ -1,6 +1,7 @@
 "use client";
 
-import { RefreshCw, Star } from "lucide-react";
+import { LocateFixed, RefreshCw, Star } from "lucide-react";
+import { GEO_MESSAGES, useGeolocate } from "@/lib/hooks/useGeolocate";
 import { agoLabel, formatObserved, minutesAgo } from "@/lib/format";
 import { useNow } from "@/lib/hooks/useNow";
 import { INDIA_METROS, placeKey, type Place } from "@/lib/places";
@@ -21,6 +22,7 @@ export function LocationBar({
 }) {
   const { favourites } = useAppState();
   const now = useNow();
+  const geo = useGeolocate();
   const fav = favourites.some((f) => placeKey(f) === placeKey(place));
   const checkedMin = now != null && checkedAt ? Math.max(0, Math.round((now - checkedAt) / 60000)) : null;
   return (
@@ -42,6 +44,15 @@ export function LocationBar({
           </button>
           <button
             type="button"
+            onClick={geo.locate}
+            disabled={geo.status === "locating"}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-[color:var(--border)] bg-[color:var(--surface)] px-4 text-sm font-medium hover:bg-[color:var(--surface-2)] disabled:opacity-60"
+          >
+            <LocateFixed size={14} aria-hidden className={geo.status === "locating" ? "animate-pulse" : ""} />
+            {geo.status === "locating" ? "Locating…" : "Use my location"}
+          </button>
+          <button
+            type="button"
             onClick={onRefresh}
             disabled={refreshing}
             className="inline-flex h-10 items-center gap-2 rounded-full border border-[color:var(--border)] bg-[color:var(--surface)] px-4 text-sm font-medium hover:bg-[color:var(--surface-2)] disabled:opacity-60"
@@ -55,6 +66,9 @@ export function LocationBar({
         {observedAt ? <>Latest reading: <strong className="text-[color:var(--ink)]">{formatObserved(observedAt)}</strong> ({agoLabel(now ? minutesAgo(observedAt, now) : null)}). </> : null}
         Checked for updates {checkedMin == null ? "…" : agoLabel(checkedMin)} · auto-refresh every 10 min.
       </p>
+      {geo.status !== "idle" && geo.status !== "locating" && (
+        <p role="status" className="rounded-xl border border-amber-600/50 bg-amber-500/10 px-3 py-2 text-sm">{GEO_MESSAGES[geo.status]}</p>
+      )}
       <nav aria-label="Indian metros" className="flex flex-wrap gap-1.5">
         {INDIA_METROS.map((m) => (
           <button

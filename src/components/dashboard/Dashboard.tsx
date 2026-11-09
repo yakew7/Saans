@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { categoryFor } from "@/lib/aqi/categories";
 import { useAir } from "@/lib/hooks/useAir";
+import { useGeolocate } from "@/lib/hooks/useGeolocate";
 import { useAtmosphere } from "@/lib/hooks/useAtmosphere";
 import { placeKey, type Place } from "@/lib/places";
 import { store, useAppState } from "@/lib/store";
@@ -32,6 +33,18 @@ export function Dashboard({ initial }: { initial?: Place | null }) {
   useEffect(() => {
     if (initial && placeKey(initial) !== placeKey(store.get().current)) store.setCurrent(initial);
     // run once for the URL-provided place
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const geo = useGeolocate();
+  useEffect(() => {
+    // First visit only: auto-detect when location permission was ALREADY granted (never triggers a prompt). Otherwise Delhi stays the default.
+    if (initial || store.get().recents.length) return;
+    navigator.permissions
+      ?.query({ name: "geolocation" })
+      .then((r) => {
+        if (r.state === "granted") geo.locate();
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const q = useAir(current.lat, current.lon);
