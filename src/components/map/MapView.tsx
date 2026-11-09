@@ -19,7 +19,8 @@ export interface MapViewProps {
   onSelect: (uid: number) => void;
   onBounds: (b: Bounds) => void;
   dark: boolean;
-  heat?: boolean;
+  showMarkers: boolean;
+  showHeat: boolean;
 }
 
 /**
@@ -86,6 +87,36 @@ function StationLayer({ stations, selectedUid, onSelect, visible }: { stations: 
   return null;
 }
 
+/** Heat intensity = AQI / 300 (capped), so the official colour stops land on the category boundaries: 50, 100, 150, 200, 300. */
+const HEAT_GRADIENT = { 0.17: "#00e400", 0.33: "#ffff00", 0.5: "#ff7e00", 0.67: "#ff0000", 0.83: "#8f3f97", 1: "#7e0023" };
+
+function HeatLayer({ stations, visible }: { stations: WaqiStationPoint[]; visible: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!visible || !stations.length) return;
+    let layer: L.HeatLayer | null = null;
+    let cancelled = false;
+    (async () => {
+      // leaflet.heat attaches itself to the global L (Leaflet sets window.L); use that same object afterwards
+      const w = window as unknown as { L?: typeof L };
+      if (!w.L) w.L = L;
+      await import("leaflet.heat");
+      if (cancelled) return;
+      const Lg = (w.L ?? L) as typeof L;
+      layer = Lg.heatLayer(
+        stations.map((s) => [s.lat, s.lon, Math.min(s.aqi, 300) / 300] as L.HeatLatLngTuple),
+        { radius: 26, blur: 22, maxZoom: 13, max: 1, minOpacity: 0.3, gradient: HEAT_GRADIENT },
+      );
+      layer.addTo(map);
+    })();
+    return () => {
+      cancelled = true;
+      if (layer) map.removeLayer(layer);
+    };
+  }, [map, stations, visible]);
+  return null;
+}
+
 function BoundsWatcher({ onBounds }: { onBounds: (b: Bounds) => void }) {
   const map = useMap();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,7 +149,7 @@ function FlyTo({ center, centerKey }: { center: { lat: number; lon: number }; ce
   return null;
 }
 
-export default function MapView({ center, centerKey, stations, selectedUid, onSelect, onBounds, dark }: MapViewProps) {
+export default function MapView({ center, centerKey, stations, selectedUid, onSelect, onBounds, dark, showMarkers, showHeat }: MapViewProps) {
   return (
     <MapContainer center={[center.lat, center.lon]} zoom={10} minZoom={3} scrollWheelZoom className="h-[62vh] min-h-[360px] w-full lg:h-[calc(100dvh-14rem)]" aria-label="Interactive air quality map">
       <TileLayer
@@ -129,7 +160,8 @@ export default function MapView({ center, centerKey, stations, selectedUid, onSe
         maxZoom={19}
         className={dark && BASEMAP.invertDark ? "tiles-dark-filter" : undefined}
       />
-      <StationLayer stations={stations} selectedUid={selectedUid} onSelect={onSelect} visible />
+      <HeatLayer stations={stations} visible={showHeat} />
+      <StationLayer stations={stations} selectedUid={selectedUid} onSelect={onSelect} visible={showMarkers} />
       <BoundsWatcher onBounds={onBounds} />
       <FlyTo center={center} centerKey={centerKey} />
     </MapContainer>

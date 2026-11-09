@@ -22,6 +22,7 @@ export function MapPage() {
   const now = useNow();
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  const [layerMode, setLayerMode] = useState<"markers" | "heat" | "both">("markers");
   const [focus, setFocus] = useState<{ lat: number; lon: number; key: string } | null>(null);
   const q = useStations(bounds);
   const stations = useMemo(() => q.data?.stations ?? [], [q.data]);
@@ -43,10 +44,29 @@ export function MapPage() {
       {q.isError && !tooBig && <Banners banners={[{ id: "stations", severity: "warn", source: "WAQI", message: `Station list unavailable: ${(q.error as Error).message}. Markers shown may be out of date.` }]} />}
       {tooBig && <Banners banners={[{ id: "zoom", severity: "info", source: "Map", message: "This area is too large to list stations. Zoom in to see them." }]} />}
 
+      <div className="flex flex-wrap items-center gap-3">
+        <fieldset className="flex items-center gap-2">
+          <legend className="sr-only">Map layers</legend>
+          <span aria-hidden className="text-sm font-medium">Layers:</span>
+          {([["markers", "Markers"], ["heat", "Heatmap"], ["both", "Both"]] as const).map(([k, label]) => (
+            <label key={k} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold ${layerMode === k ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--bg)]" : "border-[color:var(--border)]"}`}>
+              <input type="radio" name="layer" value={k} checked={layerMode === k} onChange={() => setLayerMode(k)} className="sr-only" />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {layerMode !== "markers" && (
+          <p className="flex items-center gap-2 text-xs text-[color:var(--muted)]">
+            <span aria-hidden className="h-2.5 w-28 rounded-full" style={{ background: "linear-gradient(90deg,#00e400,#ffff00,#ff7e00,#ff0000,#8f3f97,#7e0023)" }} />
+            AQI 0 → 300+. Relative intensity weighted by each real station’s AQI (dense station areas look hotter; read exact values from the markers). Blank areas have no stations, not clean air.
+          </p>
+        )}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div className="relative min-w-0">
           {mounted && (
-            <MapClient center={center} centerKey={center.key} stations={stations} selectedUid={selected} onSelect={onSelect} onBounds={setBounds} dark={resolvedTheme === "dark"} />
+            <MapClient center={center} centerKey={center.key} stations={stations} selectedUid={selected} onSelect={onSelect} onBounds={setBounds} dark={resolvedTheme === "dark"} showMarkers={layerMode !== "heat"} showHeat={layerMode !== "markers"} />
           )}
           <div className="pointer-events-none absolute bottom-6 left-3 z-[500] max-w-[85%]">
             <div className="pointer-events-auto rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)]/95 px-3 py-2 text-xs shadow">
