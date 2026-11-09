@@ -26,10 +26,13 @@ export interface Meta {
   cached?: boolean;
 }
 
+export type ErrorCode = "no_key" | "empty" | "upstream" | "invalid";
+
 export interface AdapterResult<T> {
   ok: boolean;
   data?: T;
   error?: string;
+  code?: ErrorCode;
   /** upstream HTTP status when relevant */
   status?: number;
   meta: Meta;
