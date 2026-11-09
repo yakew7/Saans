@@ -21,7 +21,7 @@ export interface MlResponse {
     horizonsBeatingPersistence: number;
     horizonsTested: number;
   };
-  history: { t: string; measured: number | null; cams: number | null }[];
+  history: { t: string; local: string; measured: number | null; cams: number | null }[];
   forecast: { t: string; local: string; ml: number; cams: number | null; lo: number; hi: number }[];
   features: string[];
   meta: Meta | null;
@@ -104,7 +104,12 @@ async function run(lat: number, lon: number): Promise<MlResponse> {
   const h24 = horizons.find((r) => r.h === 24) ?? horizons[Math.floor(horizons.length / 2)];
   const history = Array.from({ length: 48 }, (_, i) => {
     const k = originIdx - 47 + i;
-    return { t: new Date((startKey + k) * 3_600_000).toISOString(), measured: g.pm[k] ?? null, cams: g.cams[k] ?? null };
+    return {
+      t: new Date((startKey + k) * 3_600_000).toISOString(),
+      local: new Date((startKey + k) * 3_600_000 + camsD.utcOffsetSeconds * 1000).toISOString().slice(0, 16),
+      measured: g.pm[k] ?? null,
+      cams: g.cams[k] ?? null,
+    };
   });
   void rmse;
   return {

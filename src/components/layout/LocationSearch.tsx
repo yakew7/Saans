@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { placeKey, type Place } from "@/lib/places";
 import { store, useAppState } from "@/lib/store";
 
-const STAY_ON = ["/", "/map", "/history", "/forecast", "/health", "/report", "/clean-air", "/diwali", "/assistant"];
+const STAY_ON = ["/", "/map", "/history", "/forecast", "/health", "/report", "/clean-air", "/diwali", "/assistant", "/prediction", "/alerts"];
 
 interface GeoPlace extends Place {
   label: string;

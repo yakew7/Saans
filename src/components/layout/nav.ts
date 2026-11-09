@@ -1,4 +1,4 @@
-import { Activity, Bell, Bot, FileText, Compass, Leaf, GitCompareArrows, HeartPulse, History, LayoutDashboard, Map as MapIcon, Trophy, TrendingUp, type LucideIcon } from "lucide-react";
+import { Activity, Bell, Bot, FileText, FlaskConical, Compass, Leaf, GitCompareArrows, HeartPulse, History, LayoutDashboard, Map as MapIcon, Trophy, TrendingUp, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -29,6 +29,7 @@ export interface ExploreItem extends NavItem {
 export const EXPLORE: ExploreItem[] = [
   { href: "/assistant", label: "Ask Saans", icon: Bot, blurb: "A streaming assistant that answers only from the live data, with suggested questions." },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "30+ major cities ranked by live measured AQI, with modelled estimates kept separate." },
+  { href: "/prediction", label: "ML prediction", icon: FlaskConical, blurb: "An experimental 48-hour PM2.5 model, always shown with its backtest error against simple baselines." },
   { href: "/report", label: "Impact report", icon: FileText, blurb: "An automated, printable summary of a period: averages, worst days, WHO exceedances, spikes and trend." },
   { href: "/alerts", label: "Smart alerts", icon: Bell, blurb: "Set an AQI level per place and get toasts and browser notifications while Saans is open." },
   { href: "/clean-air", label: "Clean air finder", icon: Leaf, blurb: "The cleanest measured stations within your chosen radius, with direction and a route link." },
