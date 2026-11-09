@@ -226,3 +226,36 @@ export async function geocode(query: string, count = 8): Promise<AdapterResult<P
     return fromError("Open-Meteo Geocoding", "MEASURED", e);
   }
 }
+
+/** Current modelled values for many places in ONE request (Open-Meteo accepts comma-separated coordinates). */
+export async function getOpenMeteoCurrentMany(points: { lat: number; lon: number }[]): Promise<AdapterResult<(ModelledCurrent | null)[]>> {
+  if (!points.length) return okResult([], baseMeta(SOURCE, "MODELLED"));
+  try {
+    const lats = points.map((p) => coord(p.lat)).join(",");
+    const lons = points.map((p) => coord(p.lon)).join(",");
+    const url = `${AQ}?latitude=${lats}&longitude=${lons}&current=us_aqi,european_aqi,pm2_5,pm10&timezone=auto`;
+    const trk = new Tracker();
+    const c = await cached(`om-many:${url}`, { ttlMs: TTL.live, maxStaleMs: TTL.staleFallback }, async () => {
+      const { json } = await fetchJson(url, { source: SOURCE });
+      return z.array(AirResponse).or(AirResponse.transform((x) => [x])).parse(json);
+    });
+    trk.add(c);
+    const out = c.value.map((r, i): ModelledCurrent | null => {
+      if (!r.current) return null;
+      const cur = r.current;
+      return {
+        lat: r.latitude,
+        lon: r.longitude,
+        usAqi: cur.us_aqi ?? null,
+        euAqi: cur.european_aqi ?? null,
+        pollutants: { pm25: cur.pm2_5 ?? null, pm10: cur.pm10 ?? null, no2: null, so2: null, co: null, o3: null },
+        observedAt: localToIso(cur.time, r.utc_offset_seconds),
+        gridDistanceKm: Math.round(haversineKm(points[i].lat, points[i].lon, r.latitude, r.longitude) * 10) / 10,
+      };
+    });
+    const newest = out.map((o) => o?.observedAt).filter(Boolean).sort().at(-1) ?? null;
+    return okResult(out, baseMeta(SOURCE, "MODELLED", { ...trk.meta(), observedAt: newest }));
+  } catch (e) {
+    return fromError(SOURCE, "MODELLED", e);
+  }
+}
