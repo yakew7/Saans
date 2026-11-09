@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:env": "node scripts/check-env.mjs",
-    "screenshots": "tsx scripts/screenshots.ts",
+    "screenshots": "tsx scripts/screenshots.mts",
     "test:live": "RUN_LIVE=1 node --env-file-if-exists=.env.local ./node_modules/vitest/vitest.mjs run src/lib/sources/live.test.ts"
   },
   "dependencies": {
