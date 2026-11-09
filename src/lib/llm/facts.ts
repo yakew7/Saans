@@ -5,6 +5,7 @@ import { agoLabel, fmtLocal, formatObserved, minutesAgo } from "../format";
 import { addDays } from "../history";
 import { ADVICE } from "../health";
 import { POLLUTANT_INFO } from "../pollutants";
+import { cached } from "../net/cache";
 import { getForecast } from "../sources/forecast";
 import { getDailySeries } from "../sources/history";
 import { getAirSnapshot } from "../sources/snapshot";
@@ -53,7 +54,13 @@ export interface Facts {
   notices: string[];
 }
 
+/** FACTS are cached for 3 minutes per location (the underlying adapters have their own TTLs), so follow-up questions start streaming fast. */
 export async function buildFacts(lat: number, lon: number, place: string): Promise<Facts> {
+  const c = await cached(`facts:${lat.toFixed(2)},${lon.toFixed(2)}`, { ttlMs: 3 * 60_000 }, () => gather(lat, lon, place));
+  return { ...c.value, place };
+}
+
+async function gather(lat: number, lon: number, place: string): Promise<Facts> {
   const [snap, fc, series] = await Promise.all([
     getAirSnapshot(lat, lon).catch(() => null),
     getForecast(lat, lon).catch(() => null),

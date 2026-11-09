@@ -1,4 +1,4 @@
-import { Activity, Compass, Leaf, GitCompareArrows, HeartPulse, History, LayoutDashboard, Map as MapIcon, Trophy, TrendingUp, type LucideIcon } from "lucide-react";
+import { Activity, Bot, Compass, Leaf, GitCompareArrows, HeartPulse, History, LayoutDashboard, Map as MapIcon, Trophy, TrendingUp, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -27,6 +27,7 @@ export interface ExploreItem extends NavItem {
 
 /** Tools listed on the Explore hub (only features that are built and verified are listed). */
 export const EXPLORE: ExploreItem[] = [
+  { href: "/assistant", label: "Ask Saans", icon: Bot, blurb: "A streaming assistant that answers only from the live data, with suggested questions." },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy, blurb: "30+ major cities ranked by live measured AQI, with modelled estimates kept separate." },
   { href: "/clean-air", label: "Clean air finder", icon: Leaf, blurb: "The cleanest measured stations within your chosen radius, with direction and a route link." },
   { href: "/compare", label: "Compare locations", icon: GitCompareArrows, blurb: "Put 2 to 4 places side by side with a shareable link." },
