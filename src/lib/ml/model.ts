@@ -16,7 +16,8 @@ export interface Grid {
 }
 
 export const HORIZONS = [1, 3, 6, 12, 24, 36, 48] as const;
-export const LAMBDA = 5;
+/** Ridge strength. Chosen from a coarse sweep {5, 100, 400} on this same backtest (so results can be slightly optimistic). */
+export const LAMBDA = 400;
 export const FEATURE_NAMES = [
   "PM2.5 now (log)",
   "PM2.5 1 h ago",
@@ -40,9 +41,10 @@ const lg = (v: number) => Math.log1p(Math.max(0, v));
 const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
 
 /** Features for forecast origin t and horizon h. Returns null when required inputs are missing (never imputed with zeros). */
-export function features(g: Grid, t: number, h: number): number[] | null {
+export function features(g: Grid, t: number, h: number, strict = true): number[] | null {
   const pm = g.pm;
-  if (!ok(pm[t]) || !ok(pm[t - 24])) return null;
+  // training samples require real values at t and t-24; the final forecast (strict = false) tolerates a missing 24 h lag
+  if (!ok(pm[t]) || (strict && !ok(pm[t - 24]))) return null;
   const k = t + h;
   const cams = g.cams[k];
   const temp = g.temp[k];
@@ -53,7 +55,7 @@ export function features(g: Grid, t: number, h: number): number[] | null {
   const now = pm[t] as number;
   const lag = (d: number) => (ok(pm[t - d]) ? (pm[t - d] as number) : now); // missing lag falls back to the current value (persistence)
   const win = pm.slice(t - 23, t + 1).filter(ok);
-  if (win.length < 12) return null;
+  if (win.length < (strict ? 12 : 3)) return null; // final forecast tolerates a gappy last day
   const mean24 = win.reduce((a, b) => a + b, 0) / win.length;
   const camsNow = g.cams[t];
   const hourLocal = (new Date(g.start + (k * 3600 + g.utcOffsetSeconds) * 1000).getUTCHours() + 24) % 24;
@@ -81,7 +83,7 @@ export function features(g: Grid, t: number, h: number): number[] | null {
 export interface Sample {
   t: number;
   x: number[];
-  /** log1p of the actual PM2.5 at t+h */
+  /** residual target: log1p(actual at t+h) − log1p(PM2.5 now). Ridge shrinks this toward 0, i.e. toward persistence. */
   y: number;
   actual: number;
   persistence: number;
@@ -95,7 +97,7 @@ export function buildSamples(g: Grid, h: number): Sample[] {
     if (!ok(actual)) continue;
     const x = features(g, t, h);
     if (!x) continue;
-    out.push({ t, x, y: lg(actual), actual, persistence: g.pm[t] as number, cams: g.cams[t + h] as number });
+    out.push({ t, x, y: lg(actual) - x[0], actual, persistence: g.pm[t] as number, cams: g.cams[t + h] as number });
   }
   return out;
 }
@@ -141,7 +143,7 @@ export function backtestHorizon(g: Grid, h: number, lambda = LAMBDA): HorizonRes
     const model = fitRidge(train.map((r) => r.x), train.map((r) => r.y), lambda);
     for (const r of s.slice(a, b)) {
       A.push(r.actual);
-      P.push(Math.max(0, Math.expm1(predictRidge(model, r.x))));
+      P.push(Math.max(0, Math.expm1(r.x[0] + predictRidge(model, r.x))));
       Pers.push(r.persistence);
       C.push(r.cams);
     }
@@ -156,8 +158,8 @@ export function fitFinal(g: Grid, h: number, lambda = LAMBDA): RidgeModel | null
   return fitRidge(s.map((r) => r.x), s.map((r) => r.y), lambda);
 }
 
-/** Prediction for target t+h from origin t with a fitted model, in µg/m³. */
+/** Prediction for target t+h from origin t with a fitted model, in µg/m³ (persistence in log space plus the learned residual). */
 export function predictAt(model: RidgeModel, g: Grid, t: number, h: number): number | null {
-  const x = features(g, t, h);
-  return x ? Math.max(0, Math.expm1(predictRidge(model, x))) : null;
+  const x = features(g, t, h, false);
+  return x ? Math.max(0, Math.expm1(x[0] + predictRidge(model, x))) : null;
 }

@@ -247,7 +247,7 @@ export interface HourlyPm25 {
   points: { t: string; local: string; v: number | null }[];
 }
 
-/** HISTORICAL-MEASURED hourly PM2.5 for the last `days` (<= 40) from the nearest station reporting PM2.5. */
+/** HISTORICAL-MEASURED hourly PM2.5 for the last `days` (<= 100, paginated at 1000 rows/page) from the nearest station reporting PM2.5. */
 export async function getOpenAqHourlyPm25(lat: number, lon: number, days: number): Promise<AdapterResult<HourlyPm25>> {
   const key = apiKey();
   if (!key) return failResult(SOURCE, "HISTORICAL-MEASURED", "OPENAQ_API_KEY is not configured", "no_key");
@@ -262,15 +262,20 @@ export async function getOpenAqHourlyPm25(lat: number, lon: number, days: number
       .slice(0, 2);
     if (!cands.length) return failResult(SOURCE, "HISTORICAL-MEASURED", "No active OpenAQ station with PM2.5 within 25 km", "empty");
     const to = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 + 3_600_000);
-    const from = new Date(to.getTime() - Math.min(40, days) * 24 * 3_600_000);
+    const from = new Date(to.getTime() - Math.min(100, days) * 24 * 3_600_000);
     const iso = (d: Date) => d.toISOString().slice(0, 19) + "Z";
     for (const { l, d } of cands) {
       const latest = await latestFor(l.id, key, trk).catch(() => []);
       const fresh = new Map(latest.map((r) => [r.sensorsId, Date.parse(r.datetime.utc)]));
       const sensor = l.sensors.filter((s) => s.parameter.name === "pm25").sort((a, b) => (fresh.get(b.id) ?? 0) - (fresh.get(a.id) ?? 0))[0];
-      const path = `/sensors/${sensor.id}/hours?datetime_from=${iso(from)}&datetime_to=${iso(to)}&limit=1000`;
-      const res = HoursResponse.parse(await oaq(path, TTL.live, key, trk));
-      const byHour = new Map(res.results.map((r) => [r.period.datetimeFrom.utc.slice(0, 13), r]));
+      const rows: z.infer<typeof HoursResponse>["results"] = [];
+      for (let page = 1; page <= 5; page++) {
+        const path = `/sensors/${sensor.id}/hours?datetime_from=${iso(from)}&datetime_to=${iso(to)}&limit=1000&page=${page}`;
+        const res = HoursResponse.parse(await oaq(path, days > 30 ? TTL.history : TTL.live, key, trk));
+        rows.push(...res.results);
+        if (res.results.length < 1000) break;
+      }
+      const byHour = new Map(rows.map((r) => [r.period.datetimeFrom.utc.slice(0, 13), r]));
       if (byHour.size < 24) continue;
       // rebuild a gap-preserving hourly grid from the first to the last reported hour
       const keys = [...byHour.keys()].sort();
