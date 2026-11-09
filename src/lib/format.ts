@@ -2,8 +2,8 @@ export function formatObserved(iso: string | null | undefined): string {
   if (!iso) return "time unknown";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "time unknown";
-  const date = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(d);
-  const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short" }).format(d);
+  const date = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(d);
+  const time = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short" }).format(d);
   return `${date}, ${time}`;
 }
 

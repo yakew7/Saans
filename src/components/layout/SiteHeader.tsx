@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Wind } from "lucide-react";
 import { NAV } from "./nav";
 import { ThemeToggle } from "./ThemeToggle";
+import { LocationSearch } from "./LocationSearch";
 
 export function SiteHeader() {
   const path = usePathname();
@@ -18,7 +19,7 @@ export function SiteHeader() {
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-[color:var(--accent)] text-[color:var(--accent-ink)]">
             <Wind size={20} aria-hidden />
           </span>
-          <span className="font-display text-2xl leading-none tracking-tight">Saans</span>
+          <span className="font-display hidden text-2xl leading-none tracking-tight sm:inline">Saans</span>
         </Link>
         <nav aria-label="Primary" className="ml-4 hidden flex-1 items-center gap-1 lg:flex">
           {NAV.map(({ href, label, icon: Icon }) => {
@@ -38,7 +39,7 @@ export function SiteHeader() {
             );
           })}
         </nav>
-        <div className="ml-auto flex items-center gap-2" id="header-slot" />
+        <LocationSearch className="ml-auto w-full max-w-sm" />
         <ThemeToggle />
       </div>
     </header>

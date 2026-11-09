@@ -1,10 +1,12 @@
-import { ProvenanceLegend } from "@/components/ui/ProvenanceLegend";
+import { Dashboard } from "@/components/dashboard/Dashboard";
+import { z } from "zod";
 
-export default function Home() {
-  return (
-    <div className="space-y-6">
-      <h1 className="font-display text-5xl">Saans</h1>
-      <ProvenanceLegend />
-    </div>
-  );
+const q = z.object({ lat: z.coerce.number().min(-90).max(90), lon: z.coerce.number().min(-180).max(180), name: z.string().max(80).optional() });
+
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const flat = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
+  const r = q.safeParse(flat);
+  const initial = r.success ? { name: r.data.name ?? "Selected place", lat: r.data.lat, lon: r.data.lon } : null;
+  return <Dashboard initial={initial} />;
 }
