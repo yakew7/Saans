@@ -13,6 +13,7 @@ import type { HistoryMode, HistoryResponse } from "@/lib/sources/history";
 import { ChartShell } from "@/components/charts/ChartShell";
 import { DataBadge } from "@/components/ui/DataBadge";
 import { Banners, EmptyState, ErrorState, Skeleton } from "@/components/ui/States";
+import { AnomalySection } from "./AnomalySection";
 import { AqiOverlayChart, PmChart } from "./HistoryCharts";
 
 interface Range {
@@ -118,6 +119,7 @@ export function HistoryPage() {
           )}
         </>
       )}
+      <AnomalySection />
     </div>
   );
 }

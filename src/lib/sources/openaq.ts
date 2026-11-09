@@ -41,7 +41,7 @@ const DaysResponse = z.object({
 });
 
 const HoursResponse = z.object({
-  results: z.array(z.object({ value: z.number().nullable(), period: z.object({ datetimeFrom: z.object({ utc: z.string() }) }) })),
+  results: z.array(z.object({ value: z.number().nullable(), period: z.object({ datetimeFrom: z.object({ utc: z.string(), local: z.string().optional() }) }) })),
 });
 
 type OaqLocation = z.infer<typeof Location>;
@@ -234,6 +234,58 @@ export async function getOpenAqDaily(lat: number, lon: number, from: string, to:
       }
     }
     return failResult(SOURCE, "HISTORICAL-MEASURED", "No daily particulate data from nearby OpenAQ stations for this period", "empty");
+  } catch (e) {
+    return fromError(SOURCE, "HISTORICAL-MEASURED", e);
+  }
+}
+
+export interface HourlyPm25 {
+  stationId: number;
+  stationName: string;
+  distanceKm: number;
+  /** consecutive hourly grid (oldest first); hours the station did not report are null */
+  points: { t: string; local: string; v: number | null }[];
+}
+
+/** HISTORICAL-MEASURED hourly PM2.5 for the last `days` (<= 40) from the nearest station reporting PM2.5. */
+export async function getOpenAqHourlyPm25(lat: number, lon: number, days: number): Promise<AdapterResult<HourlyPm25>> {
+  const key = apiKey();
+  if (!key) return failResult(SOURCE, "HISTORICAL-MEASURED", "OPENAQ_API_KEY is not configured", "no_key");
+  const trk = new Tracker();
+  try {
+    const locs = await nearbyLocations(lat, lon, key, trk);
+    const dayAgo = Date.now() - 24 * 3_600_000;
+    const cands = locs
+      .filter((l) => l.sensors.some((s) => s.parameter.name === "pm25") && l.datetimeLast && Date.parse(l.datetimeLast.utc) > dayAgo)
+      .map((l) => ({ l, d: haversineKm(lat, lon, l.coordinates.latitude, l.coordinates.longitude) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 2);
+    if (!cands.length) return failResult(SOURCE, "HISTORICAL-MEASURED", "No active OpenAQ station with PM2.5 within 25 km", "empty");
+    const to = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 + 3_600_000);
+    const from = new Date(to.getTime() - Math.min(40, days) * 24 * 3_600_000);
+    const iso = (d: Date) => d.toISOString().slice(0, 19) + "Z";
+    for (const { l, d } of cands) {
+      const latest = await latestFor(l.id, key, trk).catch(() => []);
+      const fresh = new Map(latest.map((r) => [r.sensorsId, Date.parse(r.datetime.utc)]));
+      const sensor = l.sensors.filter((s) => s.parameter.name === "pm25").sort((a, b) => (fresh.get(b.id) ?? 0) - (fresh.get(a.id) ?? 0))[0];
+      const path = `/sensors/${sensor.id}/hours?datetime_from=${iso(from)}&datetime_to=${iso(to)}&limit=1000`;
+      const res = HoursResponse.parse(await oaq(path, TTL.live, key, trk));
+      const byHour = new Map(res.results.map((r) => [r.period.datetimeFrom.utc.slice(0, 13), r]));
+      if (byHour.size < 24) continue;
+      // rebuild a gap-preserving hourly grid from the first to the last reported hour
+      const keys = [...byHour.keys()].sort();
+      const start = Date.parse(`${keys[0]}:00:00Z`);
+      const end = Date.parse(`${keys.at(-1)}:00:00Z`);
+      const points: HourlyPm25["points"] = [];
+      for (let t = start; t <= end; t += 3_600_000) {
+        const k = new Date(t).toISOString().slice(0, 13);
+        const r = byHour.get(k);
+        points.push({ t: new Date(t).toISOString(), local: r?.period.datetimeFrom.local?.slice(0, 16) ?? new Date(t).toISOString().slice(0, 16), v: r?.value != null && r.value >= 0 ? r.value : null });
+      }
+      const out: HourlyPm25 = { stationId: l.id, stationName: l.name ?? `Station ${l.id}`, distanceKm: Math.round(d * 10) / 10, points };
+      return okResult(out, baseMeta(SOURCE, "HISTORICAL-MEASURED", { ...trk.meta(), observedAt: points.at(-1)?.t ?? null, stationName: out.stationName, stationDistanceKm: out.distanceKm }));
+    }
+    return failResult(SOURCE, "HISTORICAL-MEASURED", "Nearby OpenAQ stations have too little hourly PM2.5 data", "empty");
   } catch (e) {
     return fromError(SOURCE, "HISTORICAL-MEASURED", e);
   }
